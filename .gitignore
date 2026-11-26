@@ -1,5 +1,6 @@
 # Data (too large for Git; see data/README.md)
 data/raw/
+data/raw
 data/processed/
 data/interim/
 *.parquet
@@ -33,3 +34,4 @@ derby.log
 Thumbs.db
 .vscode/
 .idea/
+results/e4/pilot.csv

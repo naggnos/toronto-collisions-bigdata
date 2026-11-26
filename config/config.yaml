@@ -1,53 +1,76 @@
-# Project configuration. Notebooks read every path and parameter from here.
+# Project configuration. Every notebook and script reads paths and parameters from here.
+# Paths are relative to the repository root. The environment variable BD_RAW overrides paths.raw.
 
 paths:
   raw: data/raw
-  interim: data/interim
-  processed: data/processed
+  interim: data/interim          # monthly CSV copies of WYS for E4
+  processed: data/processed      # analysis-ready Parquet tables
   figures: results/figures
   tables: results/tables
+  e4: results/e4
 
-study_period:
-  start: 2014-01-01
-  end: 2025-12-31
-speed_period:            # detailed WYS speed analysis (RQ2)
-  start: 2023-01-01
-  end: 2025-12-31
+study_period: {start: "2014-01-01", end: "2025-12-31"}
+speed_years: [2023, 2024, 2025]          # detailed WYS speed analysis (RQ2, E4)
+bikeshare_years: [2019, 2020, 2021, 2022, 2023, 2024, 2025]   # files with station IDs and consistent formats
 
-# Time-based split for the severity model (never use future data to predict the past)
+# Time-based split (future data never used to predict the past)
 split:
-  train_years: [2014, 2022]
-  val_years: [2023, 2023]
-  test_years: [2024, 2025]
+  train: [2014, 2022]
+  val: [2023, 2023]
+  test: [2024, 2025]
 
-covid_period:
-  start: 2020-03-15
-  end: 2021-12-31
+covid_period: {start: "2020-03-15", end: "2021-12-31"}
+
+weather:
+  # station file prefixes in data/raw/eccc_hourly and eccc_daily
+  stations:
+    toronto_intl_a: toronto_intl_a_51459
+    toronto_city: toronto_city_31688
+    toronto_city_centre: toronto_city_centre_48549
+  precip_order: [toronto_city, toronto_city_centre]           # primary, fallback
+  visibility_order: [toronto_intl_a, toronto_city_centre]
+  weather_text_order: [toronto_intl_a, toronto_city_centre]
+  temp_order: [toronto_intl_a, toronto_city_centre, toronto_city]
+  precip_threshold_mm: 0.2      # hourly precipitation counted as "wet"
+  low_vis_km: [1, 5]
+  temp_bins: [-50, -10, 0, 10, 20, 50]
+
+wys:
+  min_volume_per_hour: 10       # sign-hours with fewer vehicles are dropped from speed models
+  bin_width_kmh: 5
 
 spatial:
-  wys_buffer_m: 150
+  buffer_m: 150
+  e2_buffers_m: [150, 250]
   sensitivity_buffers_m: [100, 250, 500]
-
-weather_stations:
-  precipitation: [toronto_city, toronto_city_centre]      # primary, fallback
-  visibility: [toronto_intl_a, toronto_city_centre]
 
 spark:
   app_name: toronto-collisions
   master: local[*]
-  driver_memory: 16g
+  driver_memory: 24g
   shuffle_partitions: 64
 
-# E4 tool comparison (RQ4). Smaller sizes use complete months, not sampled rows.
+# E4 tool comparison (RQ4). Smaller sizes are complete months, not sampled rows.
 e4:
   tools: [pandas, duckdb, spark]
   fractions: [0.25, 0.5, 0.75, 1.0]
-  cores: [1, 2, 4, 8, 16]      # pandas runs single-threaded only
+  cores: [1, 2, 4, 8, 16]       # pandas is single-threaded and runs with 1 core only
   formats: [csv, parquet]
-  repeats: 3                   # report the median
+  repeats: 3                    # median is reported
+  pandas_chunksize: 5000000
+
+severity:
+  gbt_grid:
+    learning_rate: [0.05, 0.1]
+    max_leaf_nodes: [15, 31, 63]
+    max_iter: [300]
+  torch:
+    epochs: 30
+    batch_size: 4096
+    lr: 0.001
+    weight_decay: 0.0001
 
 robustness:
-  drop_duplicates: true
   exclude_years: [2020, 2021]
 
 seed: 42
