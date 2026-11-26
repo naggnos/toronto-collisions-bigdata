@@ -38,8 +38,16 @@ spark:
   driver_memory: 16g
   shuffle_partitions: 64
 
-performance:
-  fractions: [0.5, 1.0]  # share of months processed
-  repeats: 3
+# E4 tool comparison (RQ4). Smaller sizes use complete months, not sampled rows.
+e4:
+  tools: [pandas, duckdb, spark]
+  fractions: [0.25, 0.5, 0.75, 1.0]
+  cores: [1, 2, 4, 8, 16]      # pandas runs single-threaded only
+  formats: [csv, parquet]
+  repeats: 3                   # report the median
+
+robustness:
+  drop_duplicates: true
+  exclude_years: [2020, 2021]
 
 seed: 42

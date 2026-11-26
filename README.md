@@ -3,14 +3,20 @@
 CSCI 6886 Big Data Analytics (Dr. Salma Noor), Fairleigh Dickinson University Vancouver
 Team: **Gan Song** (2095706) and **Mingye Lang** (2099150)
 
-This repository holds the implementation for Deliverable 2 (Implementation and Evaluation) of our project. We integrate Toronto Police collision records, City of Toronto Watch Your Speed (WYS) sign counts and Environment and Climate Change Canada (ECCC) hourly weather. Then we use Apache Spark (PySpark, local mode) to study how weather is associated with collision frequency and severity, and whether measured vehicle speeds change in adverse weather.
+This repository implements the project proposed in Deliverable 1. We integrate Toronto Police collision records, City of Toronto Watch Your Speed (WYS) sign counts, Bike Share Toronto trips and Environment and Climate Change Canada (ECCC) hourly weather. We ask how weather is associated with collision frequency and severity, and to what extent measured vehicle speeds and cycling exposure explain this association. We also compare pandas, DuckDB and Apache Spark on the project's main processing workload.
 
-## Research questions (Deliverable 2 scope)
+## Research questions and experiments
 
-| | Question | Method |
-|---|---|---|
-| **Main (RQ1)** | After controlling for hour, day of week, season, year and the COVID-19 period, how are rain, snow, low visibility and low temperature associated with collisions per hour and with the probability that a collision is severe (injury or fatal)? | Negative binomial regression (frequency); PyTorch logistic regression (severity) |
-| **Supporting (RQ2)** | Do 85th-percentile speeds and the share of speeding vehicles measured by WYS signs decrease in adverse weather? | Linear regression with sign fixed effects |
+**Primary question:** In Toronto from 2014 to 2025, how is weather associated with the frequency and severity of police-reported collisions, and to what extent do measured vehicle speeds and travel exposure explain this association?
+
+| RQ | Question | Experiment | Model / configurations | Evaluation |
+|---|---|---|---|---|
+| RQ1 | How are rain, snow, low visibility and low temperature associated with collisions per hour and with the probability that a collision is severe (injury or fatal)? | E1 | Negative binomial (city-hour, checked against Poisson); logistic regression and gradient-boosted trees (collision) | IRR and odds ratios with 95% CI; MAE/RMSE against baselines; PR-AUC (primary), recall, F1, ROC-AUC, calibration |
+| RQ2 | Do WYS-measured speeds (85th percentile, share speeding) decrease in adverse weather, and are higher-speed sites associated with more nearby collisions? | E2 | Linear regression with sign fixed effects, SEs clustered by sign; negative binomial per sign with active-days exposure; 150 m and 250 m buffers | Change in km/h with 95% CI; IRR per km/h; sensitivity to buffer size |
+| RQ3 | Using Bike Share trips as exposure, how does the cyclist collision rate per trip vary with weather? | E3 | Negative binomial (neighbourhood-hour) with log(trips) offset, compared with a model without exposure | Cyclist collisions per 100,000 trips with 95% CI |
+| RQ4 | Which of pandas, DuckDB and PySpark is most suitable for this workload? | E4 | 3 tools × 25/50/75/100% of data × 1/2/4/8/16 cores × CSV/Parquet, 3 runs each (median) | Run time, Spark start-up, peak memory, rows/s, speed-up |
+
+Robustness checks for E1–E3: without the 6,117 duplicate records, alternative buffer radii (100/250/500 m), and excluding the COVID-19 years (2020–2021).
 
 ## Repository layout
 
@@ -37,7 +43,7 @@ All datasets are open data. Raw files are not stored in this repository because 
 | D1 | Traffic Collisions | Toronto Police Service |
 | D2 | Killed or Seriously Injured (KSI) collisions | Toronto Police Service |
 | D3 | Watch Your Speed – school-zone and mobile sign speed counts | City of Toronto |
-| D4 | Bike Share Toronto ridership (optional, RQ3) | Toronto Parking Authority |
+| D4 | Bike Share Toronto ridership | Toronto Parking Authority |
 | D5 | Hourly weather, three Toronto stations | ECCC |
 
 ## How to run
@@ -64,13 +70,16 @@ Download the files listed in `data/README.md` into `data/raw/`, following the fo
 
 ### 4. Run the notebooks in order
 
-| Notebook | Purpose | Report section |
-|---|---|---|
-| `01_data_preparation_eda.ipynb` | Load, clean, deduplicate, EDA | §2 |
-| `02_spark_processing.ipynb` | Spark aggregation and joins: WYS sign-hour metrics, city-hour collision/weather table | §3 |
-| `03_severity_model_pytorch.ipynb` | PyTorch severity model: training, time-based split, evaluation | §4 |
-| `04_experiments_rq1_rq2.ipynb` | RQ1 negative binomial model and RQ2 speed model | §5 |
-| `05_performance_evaluation.ipynb` | Spark execution time on 50% vs 100% of the data | §6 |
+| Notebook | Purpose |
+|---|---|
+| `00_manifest_and_parquet.ipynb` | Record every raw file (URL, size, SHA-256); convert to Parquet partitioned by year/month |
+| `01_data_quality_eda.ipynb` | Data-quality checks (missing coordinates, duplicates, severity definition, station coverage, time zones, COVID break) and EDA |
+| `02_e4_tool_comparison.ipynb` | E4: same WYS aggregation + join workload in pandas, DuckDB and Spark; selects the processing tool |
+| `03_pipeline.ipynb` | Composite weather table; WYS sign-hour metrics; city-hour and neighbourhood-hour panels; grid-based spatial join of collisions to WYS signs |
+| `04_e1_weather_collisions.ipynb` | E1 / RQ1: frequency (negative binomial) and severity (logistic regression, GBT) models |
+| `05_e2_speed.ipynb` | E2 / RQ2: speed adaptation and speed–collision models |
+| `06_e3_exposure.ipynb` | E3 / RQ3: cyclist risk per Bike Share trip |
+| `07_robustness.ipynb` | Robustness checks for E1–E3 |
 
 Figures and tables are written to `results/`.
 

@@ -5,11 +5,12 @@ Both members reviewed each other's work and can explain every part of the implem
 | Area | Gan Song | Mingye Lang |
 |---|---|---|
 | Data acquisition, manifest, quality checks | Lead | Review |
-| Data preparation and EDA (§2) | Lead | Support |
-| Spark processing pipeline (§3) | Lead | Review |
-| PyTorch severity model (§4) | Review | Lead |
-| RQ1 / RQ2 experiments (§5) | Support | Lead |
-| Big Data performance evaluation (§6) | Lead | Review |
+| Data preparation and EDA | Lead | Support |
+| E4 tool comparison (RQ4) | Lead | Review |
+| Processing pipeline (cleaning, joins, aggregation) | Lead | Review |
+| E1–E3 models (RQ1–RQ3) and robustness checks | Review | Lead |
+| Experimental design and ethics | Support | Lead |
+| Literature review | Shared | Shared |
 | Report writing | Shared | Shared |
 | GitHub repository and README | Lead | Review |
 | Presentation and demonstration | Shared | Shared |
