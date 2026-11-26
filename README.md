@@ -21,73 +21,99 @@ Robustness checks for E1–E3: without the 6,117 duplicate records, alternative 
 ## Repository layout
 
 ```
-├── config/config.yaml        # paths, date ranges, buffer radii, seeds
-├── data/                     # raw and processed data (not committed, see data/README.md)
-├── notebooks/                # numbered notebooks, run in order
-├── src/                      # shared helpers (Spark session, config loader)
-├── results/
-│   ├── figures/              # figures used in the report
-│   └── tables/               # result tables (CSV)
-├── docs/
-│   ├── CONTRIBUTIONS.md      # task distribution between team members
-│   └── AI_USAGE.md           # AI tool disclosure
-└── requirements.txt
+├── config/config.yaml        # all paths and parameters (periods, split, buffers, E4 design, seeds)
+├── src/
+│   ├── collisions.py         # D1/D2 loading and cleaning
+│   ├── weather.py            # composite city-hour weather table, calendar features
+│   ├── wys.py                # WYS conversion and sign-hour speed metrics (Spark)
+│   ├── spatial.py            # grid-based spatial join of collisions to WYS signs (Spark)
+│   ├── bikeshare.py          # Bike Share trips and neighbourhood-hour counts (Spark)
+│   ├── panels.py             # city-hour, sign-hour, sign-level and neighbourhood-hour tables (Spark)
+│   ├── e4.py                 # E4 workload implemented in pandas, DuckDB and Spark
+│   ├── models.py             # count, severity (incl. PyTorch), fixed-effects models
+│   └── spark_session.py      # config loader and local Spark session
+├── scripts/
+│   ├── download_data.py      # downloads every raw file and writes the manifest
+│   ├── verify_profile.py     # independent check of the dataset figures in the proposal
+│   └── run_e4.py             # runs the E4 design and measures time and peak memory
+├── notebooks/                # 00-07, run in order
+├── data/                     # raw, interim and processed data (not committed)
+├── results/                  # figures/, tables/, e4/
+└── docs/                     # CONTRIBUTIONS.md, AI_USAGE.md
 ```
 
 ## Datasets
 
-All datasets are open data. Raw files are not stored in this repository because of their size (about 17 GB). See [`data/README.md`](data/README.md) for download links and where to place the files.
+All datasets are open data. Raw files (17.3 GB) are not stored in the repository. `scripts/download_data.py` downloads them into `data/raw/` and records URL, size and SHA-256 of every file in `data/raw/manifest.csv`. See [`data/README.md`](data/README.md).
 
-| ID | Dataset | Publisher |
-|---|---|---|
-| D1 | Traffic Collisions | Toronto Police Service |
-| D2 | Killed or Seriously Injured (KSI) collisions | Toronto Police Service |
-| D3 | Watch Your Speed – school-zone and mobile sign speed counts | City of Toronto |
-| D4 | Bike Share Toronto ridership | Toronto Parking Authority |
-| D5 | Hourly weather, three Toronto stations | ECCC |
+| ID | Dataset | Publisher | Used for |
+|---|---|---|---|
+| D1 | Traffic Collisions | Toronto Police Service | RQ1–RQ3 |
+| D2 | Killed or Seriously Injured (KSI) collisions | Toronto Police Service | descriptive checks |
+| D3 | Watch Your Speed stationary (school-zone) sign speed counts and locations | City of Toronto | RQ2, RQ4 |
+| D4 | Bike Share Toronto ridership and station information | Toronto Parking Authority | RQ3 |
+| D5 | Hourly and daily weather, three Toronto stations | ECCC | RQ1–RQ3 |
 
 ## How to run
 
 ### 1. Requirements
 
-- Python 3.11+
-- Java 17 (required by Spark)
-- About 60 GB free disk space for raw data, Parquet copies and intermediate tables
+- Python 3.11–3.13, Java 17 or 21 (for Spark), `unzip` (some archives use Deflate64)
+- About 60 GB free disk space
+- The results in the report were produced on an Apple M5 Pro (18 cores, 48 GB RAM)
 
-### 2. Set up the environment
+### 2. Set up
 
 ```bash
 git clone https://github.com/naggnos/toronto-collisions-bigdata.git
 cd toronto-collisions-bigdata
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Get the data
+### 3. Data
 
-Download the files listed in `data/README.md` into `data/raw/`, following the folder names given there.
+Either download everything:
 
-### 4. Run the notebooks in order
+```bash
+python scripts/download_data.py
+```
 
-| Notebook | Purpose |
-|---|---|
-| `00_manifest_and_parquet.ipynb` | Record every raw file (URL, size, SHA-256); convert to Parquet partitioned by year/month |
-| `01_data_quality_eda.ipynb` | Data-quality checks (missing coordinates, duplicates, severity definition, station coverage, time zones, COVID break) and EDA |
-| `02_e4_tool_comparison.ipynb` | E4: same WYS aggregation + join workload in pandas, DuckDB and Spark; selects the processing tool |
-| `03_pipeline.ipynb` | Composite weather table; WYS sign-hour metrics; city-hour and neighbourhood-hour panels; grid-based spatial join of collisions to WYS signs |
-| `04_e1_weather_collisions.ipynb` | E1 / RQ1: frequency (negative binomial) and severity (logistic regression, GBT) models |
-| `05_e2_speed.ipynb` | E2 / RQ2: speed adaptation and speed–collision models |
-| `06_e3_exposure.ipynb` | E3 / RQ3: cyclist risk per Bike Share trip |
-| `07_robustness.ipynb` | Robustness checks for E1–E3 |
+or point the project at an existing copy of the raw data:
 
-Figures and tables are written to `results/`.
+```bash
+ln -s "/path/to/existing/data/raw" data/raw      # or: export BD_RAW=/path/to/existing/data/raw
+```
+
+### 4. Run
+
+| Step | What it does | Approx. time* |
+|---|---|---|
+| `notebooks/00_manifest_and_parquet.ipynb` | manifest check; clean collisions; composite weather; WYS → Parquet + monthly CSV | 20 min |
+| `notebooks/01_data_quality_eda.ipynb` | data-quality issues and EDA figures | 3 min |
+| `notebooks/02_e4_tool_comparison.ipynb` (first cells) | shared inputs for E4 | 2 min |
+| `python scripts/run_e4.py --pilot` then `python scripts/run_e4.py` | **E4**: 264 timed runs (resumable) | several hours |
+| `notebooks/02_e4_tool_comparison.ipynb` (rest) | E4 tables, figures and tool selection | 1 min |
+| `notebooks/03_pipeline.ipynb` | Spark pipeline: sign-hour metrics, panels, spatial joins, Bike Share | 30 min |
+| `notebooks/04_e1_weather_collisions.ipynb` | **E1**: frequency (Poisson/NB) and severity (logistic, GBT, PyTorch) | 10 min |
+| `notebooks/05_e2_speed.ipynb` | **E2**: speed fixed-effects models; speed–collision NB | 10 min |
+| `notebooks/06_e3_exposure.ipynb` | **E3**: cyclist collisions per trip | 10 min |
+| `notebooks/07_robustness.ipynb` | robustness checks; hypotheses H1–H4 summary | 10 min |
+
+\*on the hardware above. Run E4 from a terminal with no other heavy programs open.
+
+Figures are written to `results/figures/` and tables to `results/tables/`.
+
+### Notes on scope
+
+- Detailed speed analysis and E4 use the 2023–2025 WYS stationary-sign records (144.2 million rows). The 2017–2022 archives can be added with `include_archive_years` in `src/wys.py`.
+- RQ3 uses Bike Share files from 2019–2025. Part of the 2017 data has no station IDs, and the 2017–2018 files mix day/month orders.
 
 ## Reproducibility
 
 - All parameters (paths, date ranges, buffer radii, random seed) live in `config/config.yaml`.
 - Random seeds are fixed.
-- Software versions are pinned in `requirements.txt`. Hardware details are logged with each performance run.
+- Minimum versions are listed in `requirements.txt`. Hardware details are written to `results/e4/hardware.json` with the performance runs.
 
 ## AI usage
 
