@@ -1,0 +1,45 @@
+# Project configuration. Notebooks read every path and parameter from here.
+
+paths:
+  raw: data/raw
+  interim: data/interim
+  processed: data/processed
+  figures: results/figures
+  tables: results/tables
+
+study_period:
+  start: 2014-01-01
+  end: 2025-12-31
+speed_period:            # detailed WYS speed analysis (RQ2)
+  start: 2023-01-01
+  end: 2025-12-31
+
+# Time-based split for the severity model (never use future data to predict the past)
+split:
+  train_years: [2014, 2022]
+  val_years: [2023, 2023]
+  test_years: [2024, 2025]
+
+covid_period:
+  start: 2020-03-15
+  end: 2021-12-31
+
+spatial:
+  wys_buffer_m: 150
+  sensitivity_buffers_m: [100, 250, 500]
+
+weather_stations:
+  precipitation: [toronto_city, toronto_city_centre]      # primary, fallback
+  visibility: [toronto_intl_a, toronto_city_centre]
+
+spark:
+  app_name: toronto-collisions
+  master: local[*]
+  driver_memory: 16g
+  shuffle_partitions: 64
+
+performance:
+  fractions: [0.5, 1.0]  # share of months processed
+  repeats: 3
+
+seed: 42

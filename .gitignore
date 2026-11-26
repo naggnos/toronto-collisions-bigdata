@@ -1,0 +1,35 @@
+# Data (too large for Git; see data/README.md)
+data/raw/
+data/processed/
+data/interim/
+*.parquet
+*.csv.gz
+*.zip
+# keep small result tables
+!results/tables/*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Spark
+spark-warehouse/
+metastore_db/
+derby.log
+*.crc
+
+# PyTorch checkpoints
+*.pt
+*.pth
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
