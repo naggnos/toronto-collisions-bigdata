@@ -8,7 +8,9 @@ the number of collisions matched to each sign in that hour, and write the result
 All three implementations parse timestamps from the same string positions and use identical
 formulas, so their outputs can be compared row for row (row count and column totals are checked).
 
-Run one configuration:  python -m src.e4 --tool duckdb --cores 4 --fraction 0.5 --fmt parquet
+All tools read the same Parquet files (partitioned by year/month).
+
+Run one configuration:  python -m src.e4 --tool duckdb --cores 4 --fraction 0.5
 The full experiment is driven by scripts/run_e4.py, which also measures peak memory.
 """
 from __future__ import annotations
@@ -26,14 +28,13 @@ from .wys import month_list
 
 
 # ----------------------------------------------------------------------------- inputs
-def input_files(cfg, fraction: float, fmt: str) -> list[str]:
-    root = path(cfg, "interim", "wys_csv") if fmt == "csv" else path(cfg, "processed", "wys_raw")
-    ext = "csv" if fmt == "csv" else "parquet"
+def input_files(cfg, fraction: float) -> list[str]:
+    root = path(cfg, "processed", "wys_raw")
     files = []
     for y, m in month_list(cfg, fraction):
-        files += sorted(glob.glob(str(root / f"year={y}" / f"month={m}" / f"*.{ext}")))
+        files += sorted(glob.glob(str(root / f"year={y}" / f"month={m}" / "*.parquet")))
     if not files:
-        raise FileNotFoundError(f"no {fmt} input for fraction {fraction}; run notebook 00 first")
+        raise FileNotFoundError(f"no Parquet input for fraction {fraction}; run notebook 00 first")
     return files
 
 
@@ -61,22 +62,16 @@ def write_side_tables(cfg, locations, weather, matches_hourly) -> dict:
 
 
 # ----------------------------------------------------------------------------- pandas
-def run_pandas(files, fmt, tables, out_path, chunksize, timings):
+def run_pandas(files, tables, out_path, chunksize, timings):
     import numpy as np
     import pandas as pd
     import pyarrow.parquet as pq
 
     def chunks():
         for f in files:
-            if fmt == "csv":
-                yield from pd.read_csv(f, usecols=["sign_id", "datetime_bin", "speed_bin", "volume"],
-                                       dtype={"sign_id": "int64", "datetime_bin": "string",
-                                              "speed_bin": "string", "volume": "int64"},
-                                       chunksize=chunksize)
-            else:
-                pf = pq.ParquetFile(f)
-                for b in pf.iter_batches(batch_size=chunksize, columns=["sign_id", "datetime_bin", "speed_bin", "volume"]):
-                    yield b.to_pandas()
+            pf = pq.ParquetFile(f)
+            for b in pf.iter_batches(batch_size=chunksize, columns=["sign_id", "datetime_bin", "speed_bin", "volume"]):
+                yield b.to_pandas()
 
     t0 = time.perf_counter()
     partial, rows_in = [], 0
@@ -153,7 +148,7 @@ LEFT JOIN read_parquet('{collisions}') c USING (sign_id, date, hour)
 """
 
 
-def run_duckdb(files, fmt, tables, out_path, cores, timings):
+def run_duckdb(files, tables, out_path, cores, timings):
     import duckdb
     con = duckdb.connect()
     con.execute(f"SET threads = {cores}")
@@ -161,9 +156,7 @@ def run_duckdb(files, fmt, tables, out_path, cores, timings):
     tmp = tempfile.mkdtemp(prefix="duck_spill_")
     con.execute(f"SET temp_directory = '{tmp}'")
     flist = "[" + ", ".join(f"'{f}'" for f in files) + "]"
-    reader = (f"read_csv({flist}, header=true, columns={{'sign_id':'BIGINT','address':'VARCHAR','dir':'VARCHAR',"
-              f"'datetime_bin':'VARCHAR','speed_bin':'VARCHAR','volume':'BIGINT'}})"
-              if fmt == "csv" else f"read_parquet({flist})")
+    reader = f"read_parquet({flist})"
     sql = DUCK_SQL.format(reader=reader, **tables)
     t0 = time.perf_counter()
     con.execute(f"COPY ({sql}) TO '{out_path}' (FORMAT parquet)")
@@ -177,14 +170,12 @@ def run_duckdb(files, fmt, tables, out_path, cores, timings):
 
 
 # ----------------------------------------------------------------------------- Spark
-def spark_workload(spark, files, fmt, tables):
+def spark_workload(spark, files, tables):
     """Returns (output DataFrame, raw DataFrame). Same steps as DUCK_SQL, written with the DataFrame API."""
     from pyspark.sql import Window
     from pyspark.sql import functions as F
 
-    from .wys import raw_schema
-    raw = (spark.read.csv(files, header=True, schema=raw_schema()) if fmt == "csv"
-           else spark.read.parquet(*files))
+    raw = spark.read.parquet(*files)
     r = raw.select(F.col("sign_id").cast("long").alias("sign_id"),
                    F.substring("datetime_bin", 1, 10).alias("date"),
                    F.substring("datetime_bin", 12, 2).cast("long").alias("hour"),
@@ -212,7 +203,7 @@ def spark_workload(spark, files, fmt, tables):
     return out, raw
 
 
-def run_spark(files, fmt, tables, out_path, cores, cfg, timings):
+def run_spark(files, tables, out_path, cores, cfg, timings):
     from pyspark.sql import functions as F
 
     from .spark_session import get_spark
@@ -221,7 +212,7 @@ def run_spark(files, fmt, tables, out_path, cores, cfg, timings):
     spark.sparkContext.setLogLevel("ERROR")
     timings["spark_startup_s"] = time.perf_counter() - t0
     t1 = time.perf_counter()
-    out, raw = spark_workload(spark, files, fmt, tables)
+    out, raw = spark_workload(spark, files, tables)
     out.write.mode("overwrite").parquet(out_path)
     timings["workload_s"] = time.perf_counter() - t1
     res = spark.read.parquet(out_path).agg(F.count("*"), F.sum("volume"), F.sum("collisions"), F.avg("p85_speed")).collect()[0]
@@ -237,24 +228,23 @@ def main():
     ap.add_argument("--tool", choices=["pandas", "duckdb", "spark"], required=True)
     ap.add_argument("--cores", type=int, default=1)
     ap.add_argument("--fraction", type=float, default=1.0)
-    ap.add_argument("--fmt", choices=["csv", "parquet"], default="parquet")
     a = ap.parse_args()
     cfg = load_config()
-    files = input_files(cfg, a.fraction, a.fmt)
+    files = input_files(cfg, a.fraction)
     tables = side_tables(cfg)
     out_dir = tempfile.mkdtemp(prefix=f"e4_{a.tool}_")
     out_path = os.path.join(out_dir, "out.parquet")
     timings = {"spark_startup_s": 0.0}
     if a.tool == "pandas":
-        rows_in, summary = run_pandas(files, a.fmt, tables, out_path, cfg["e4"]["pandas_chunksize"], timings)
+        rows_in, summary = run_pandas(files, tables, out_path, cfg["e4"]["pandas_chunksize"], timings)
     elif a.tool == "duckdb":
-        rows_in, summary = run_duckdb(files, a.fmt, tables, out_path, a.cores, timings)
+        rows_in, summary = run_duckdb(files, tables, out_path, a.cores, timings)
     else:
-        rows_in, summary = run_spark(files, a.fmt, tables, out_path, a.cores, cfg, timings)
+        rows_in, summary = run_spark(files, tables, out_path, a.cores, cfg, timings)
     # total = start-up + workload; row counting for the summary is excluded from both
     total = timings["spark_startup_s"] + timings["workload_s"]
     shutil.rmtree(out_dir, ignore_errors=True)
-    print("E4RESULT " + json.dumps({"tool": a.tool, "cores": a.cores, "fraction": a.fraction, "fmt": a.fmt,
+    print("E4RESULT " + json.dumps({"tool": a.tool, "cores": a.cores, "fraction": a.fraction,
                                     "n_files": len(files), "rows_in": int(rows_in), "total_s": total, **timings, **summary}))
 
 

@@ -3,7 +3,7 @@
 
 paths:
   raw: data/raw
-  interim: data/interim          # monthly CSV copies of WYS for E4
+  interim: data/interim          # extracted archives
   processed: data/processed      # analysis-ready Parquet tables
   figures: results/figures
   tables: results/tables
@@ -50,12 +50,11 @@ spark:
   driver_memory: 24g
   shuffle_partitions: 64
 
-# E4 tool comparison (RQ4). Smaller sizes are complete months, not sampled rows.
+# E4 tool comparison (RQ4), all on Parquet. Smaller sizes are complete months, not sampled rows.
 e4:
   tools: [pandas, duckdb, spark]
   fractions: [0.25, 0.5, 0.75, 1.0]
   cores: [1, 2, 4, 8, 16]       # pandas is single-threaded and runs with 1 core only
-  formats: [csv, parquet]
   repeats: 3                    # median is reported
   pandas_chunksize: 5000000
 

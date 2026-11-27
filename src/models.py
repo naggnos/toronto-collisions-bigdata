@@ -47,12 +47,15 @@ def fit_nb(f, df, offset=None, poisson_res=None):
     values can fail on ~100k rows with many dummies)."""
     if poisson_res is None:
         poisson_res = smf.glm(f, df, family=sm.families.Poisson(), offset=offset).fit()
-    res = smf.negativebinomial(f, df, offset=offset).fit(
-        start_params=np.append(poisson_res.params.to_numpy(), 0.1), method="newton", maxiter=100, disp=0)
-    if not res.mle_retvals.get("converged", False) or not np.isfinite(res.params).all():
-        start = res.params.to_numpy() if np.isfinite(res.params).all() else np.append(poisson_res.params.to_numpy(), 0.1)
-        res = smf.negativebinomial(f, df, offset=offset).fit(start_params=start, method="bfgs", maxiter=1000, disp=0)
-    if not np.isfinite(res.params).all() or not np.isfinite(res.bse).all():
+    try:
+        res = smf.negativebinomial(f, df, offset=offset).fit(
+            start_params=np.append(poisson_res.params.to_numpy(), 0.1), method="newton", maxiter=100, disp=0)
+        if not res.mle_retvals.get("converged", False) or not np.isfinite(res.params).all():
+            start = res.params.to_numpy() if np.isfinite(res.params).all() else np.append(poisson_res.params.to_numpy(), 0.1)
+            res = smf.negativebinomial(f, df, offset=offset).fit(start_params=start, method="bfgs", maxiter=1000, disp=0)
+    except np.linalg.LinAlgError:
+        res = None
+    if res is None or not np.isfinite(res.params).all() or not np.isfinite(res.bse).all():
         # Very sparse outcomes: fall back to Poisson with robust (sandwich) standard errors.
         import warnings
         warnings.warn("negative binomial did not converge; using Poisson with robust standard errors", RuntimeWarning)

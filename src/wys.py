@@ -55,9 +55,9 @@ def add_time_columns(df):
               .withColumn("month", F.month("ts")))
 
 
-def convert_to_parquet_and_monthly_csv(spark, cfg, years=None, include_archive_years=()):
-    """One-off conversion (not timed): raw yearly CSV -> Parquet partitioned by year/month, plus
-    monthly CSV copies so that E4 can read the same months from CSV and from Parquet."""
+def convert_to_parquet(spark, cfg, years=None, include_archive_years=()):
+    """One-off conversion (not timed): raw yearly CSV -> Parquet partitioned by year/month.
+    All later steps, including every E4 run, read this Parquet copy."""
     from pyspark.sql import functions as F
     years = years or cfg["speed_years"]
     files = yearly_csv_files(cfg, years) + extract_archive_years(cfg, include_archive_years)
@@ -66,10 +66,7 @@ def convert_to_parquet_and_monthly_csv(spark, cfg, years=None, include_archive_y
     df = df.select(*RAW_COLS, "year", "month")
     pq = str(path(cfg, "processed", "wys_raw"))
     df.repartition("year", "month").write.mode("overwrite").partitionBy("year", "month").parquet(pq)
-    csv = str(path(cfg, "interim", "wys_csv"))
-    (spark.read.parquet(pq).repartition("year", "month")
-          .write.mode("overwrite").partitionBy("year", "month").option("header", True).csv(csv))
-    return pq, csv
+    return pq
 
 
 def month_list(cfg, fraction: float) -> list[tuple[int, int]]:

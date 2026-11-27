@@ -14,7 +14,7 @@ This repository implements the project proposed in Deliverable 1. We integrate T
 | RQ1 | How are rain, snow, low visibility and low temperature associated with collisions per hour and with the probability that a collision is severe (injury or fatal)? | E1 | Negative binomial (city-hour, checked against Poisson); logistic regression and gradient-boosted trees (collision) | IRR and odds ratios with 95% CI; MAE/RMSE against baselines; PR-AUC (primary), recall, F1, ROC-AUC, calibration |
 | RQ2 | Do WYS-measured speeds (85th percentile, share speeding) decrease in adverse weather, and are higher-speed sites associated with more nearby collisions? | E2 | Linear regression with sign fixed effects, SEs clustered by sign; negative binomial per sign with active-days exposure; 150 m and 250 m buffers | Change in km/h with 95% CI; IRR per km/h; sensitivity to buffer size |
 | RQ3 | Using Bike Share trips as exposure, how does the cyclist collision rate per trip vary with weather? | E3 | Negative binomial (neighbourhood-hour) with log(trips) offset, compared with a model without exposure | Cyclist collisions per 100,000 trips with 95% CI |
-| RQ4 | Which of pandas, DuckDB and PySpark is most suitable for this workload? | E4 | 3 tools × 25/50/75/100% of data × 1/2/4/8/16 cores × CSV/Parquet, 3 runs each (median) | Run time, Spark start-up, peak memory, rows/s, speed-up |
+| RQ4 | Which of pandas, DuckDB and PySpark is most suitable for this workload? | E4 | 3 tools × 25/50/75/100% of data × 1/2/4/8/16 cores, all reading Parquet, 3 runs each (median) | Run time, Spark start-up, peak memory, rows/s, speed-up |
 
 Robustness checks for E1–E3: without the 6,117 duplicate records, alternative buffer radii (100/250/500 m), and excluding the COVID-19 years (2020–2021).
 
@@ -89,10 +89,10 @@ ln -s "/path/to/existing/data/raw" data/raw      # or: export BD_RAW=/path/to/ex
 
 | Step | What it does | Approx. time* |
 |---|---|---|
-| `notebooks/00_manifest_and_parquet.ipynb` | manifest check; clean collisions; composite weather; WYS → Parquet + monthly CSV | 20 min |
+| `notebooks/00_manifest_and_parquet.ipynb` | manifest check; clean collisions; composite weather; WYS → Parquet | 15 min |
 | `notebooks/01_data_quality_eda.ipynb` | data-quality issues and EDA figures | 3 min |
 | `notebooks/02_e4_tool_comparison.ipynb` (first cells) | shared inputs for E4 | 2 min |
-| `python scripts/run_e4.py --pilot` then `python scripts/run_e4.py` | **E4**: 264 timed runs (resumable) | several hours |
+| `python scripts/run_e4.py --pilot` then `python scripts/run_e4.py` | **E4**: 132 timed runs (resumable) | a few hours |
 | `notebooks/02_e4_tool_comparison.ipynb` (rest) | E4 tables, figures and tool selection | 1 min |
 | `notebooks/03_pipeline.ipynb` | Spark pipeline: sign-hour metrics, panels, spatial joins, Bike Share | 30 min |
 | `notebooks/04_e1_weather_collisions.ipynb` | **E1**: frequency (Poisson/NB) and severity (logistic, GBT, PyTorch) | 10 min |
@@ -106,7 +106,7 @@ Figures are written to `results/figures/` and tables to `results/tables/`.
 
 ### Notes on scope
 
-- Detailed speed analysis and E4 use the 2023–2025 WYS stationary-sign records (144.2 million rows). The 2017–2022 archives can be added with `include_archive_years` in `src/wys.py`.
+- Detailed speed analysis and E4 use the 2023–2025 WYS stationary-sign records (144.2 million rows). The raw CSV files are converted to Parquet once, and every E4 run reads the Parquet copy. The 2017–2022 archives can be added with `include_archive_years` in `src/wys.py`.
 - RQ3 uses Bike Share files from 2019–2025. Part of the 2017 data has no station IDs, and the 2017–2018 files mix day/month orders.
 
 ## Reproducibility

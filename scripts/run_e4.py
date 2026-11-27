@@ -28,7 +28,7 @@ import psutil
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.spark_session import ROOT, hardware_info, load_config, path  # noqa: E402
 
-FIELDS = ["tool", "cores", "fraction", "fmt", "repeat", "n_files", "rows_in", "total_s", "spark_startup_s",
+FIELDS = ["tool", "cores", "fraction", "repeat", "n_files", "rows_in", "total_s", "spark_startup_s",
           "workload_s", "peak_mem_gb", "rows_out", "sum_volume", "sum_collisions", "mean_p85", "status"]
 
 
@@ -48,9 +48,9 @@ def peak_rss(proc: subprocess.Popen, result: dict):
     result["peak"] = peak
 
 
-def run_one(tool, cores, fraction, fmt, timeout):
+def run_one(tool, cores, fraction, timeout):
     cmd = [sys.executable, "-m", "src.e4", "--tool", tool, "--cores", str(cores),
-           "--fraction", str(fraction), "--fmt", fmt]
+           "--fraction", str(fraction)]
     proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     mem = {}
     t = threading.Thread(target=peak_rss, args=(proc, mem))
@@ -80,7 +80,6 @@ def main():
     ap.add_argument("--tools", nargs="+", default=e["tools"])
     ap.add_argument("--fractions", nargs="+", type=float, default=e["fractions"])
     ap.add_argument("--cores", nargs="+", type=int, default=e["cores"])
-    ap.add_argument("--formats", nargs="+", default=e["formats"])
     ap.add_argument("--repeats", type=int, default=e["repeats"])
     ap.add_argument("--timeout", type=int, default=3600, help="seconds per run")
     ap.add_argument("--pilot", action="store_true", help="smallest fraction, 1 repeat, cores 1 and max")
@@ -98,14 +97,14 @@ def main():
         with open(out) as f:
             for r in csv.DictReader(f):
                 if r["status"] == "ok":
-                    done.add((r["tool"], int(r["cores"]), float(r["fraction"]), r["fmt"], int(r["repeat"])))
+                    done.add((r["tool"], int(r["cores"]), float(r["fraction"]), int(r["repeat"])))
 
     configs = []
     for rep in range(1, a.repeats + 1):          # repeats are interleaved, not run back to back
-        for tool, frac, fmt, cores in itertools.product(a.tools, a.fractions, a.formats, a.cores):
+        for tool, frac, cores in itertools.product(a.tools, a.fractions, a.cores):
             if tool == "pandas" and cores != 1:
                 continue
-            configs.append((tool, cores, frac, fmt, rep))
+            configs.append((tool, cores, frac, rep))
     todo = [c for c in configs if c not in done]
     print(f"{len(configs)} runs in design, {len(todo)} to do -> {out}")
 
@@ -114,10 +113,10 @@ def main():
         w = csv.DictWriter(f, fieldnames=FIELDS, extrasaction="ignore")
         if new:
             w.writeheader()
-        for i, (tool, cores, frac, fmt, rep) in enumerate(todo, 1):
-            print(f"[{i}/{len(todo)}] {tool:6s} cores={cores:<2d} fraction={frac:<4} {fmt:7s} repeat {rep}", flush=True)
-            res = run_one(tool, cores, frac, fmt, a.timeout)
-            res.update({"tool": tool, "cores": cores, "fraction": frac, "fmt": fmt, "repeat": rep})
+        for i, (tool, cores, frac, rep) in enumerate(todo, 1):
+            print(f"[{i}/{len(todo)}] {tool:6s} cores={cores:<2d} fraction={frac:<4} repeat {rep}", flush=True)
+            res = run_one(tool, cores, frac, a.timeout)
+            res.update({"tool": tool, "cores": cores, "fraction": frac, "repeat": rep})
             w.writerow(res)
             f.flush()
             if res["status"] == "ok":
